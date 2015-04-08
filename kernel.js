@@ -118,6 +118,7 @@ Kernel.prototype = {
     
     enforceSync: function(){
         this.paused = false;
+        clearTimeout(this.panicTimer);
         for(var i = this.reactor.ticks-4;i<this.reactor.ticks-1;i++){
             if(!this.syncedTicks[i]){
                 this.paused = true;
@@ -127,7 +128,7 @@ Kernel.prototype = {
             this.reactor.tickOnce();
         } else {
             var self = this;
-            setTimeout(function(){
+            this.panicTimer = setTimeout(function(){
                 self.panic();
             },3000);
         }
