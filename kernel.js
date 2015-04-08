@@ -5,7 +5,7 @@ var Kernel = function () {
 Kernel.prototype = {
     
     isMaster: false,
-    
+    syncedTicks: {},
     initialize: function () {
         this.reactor = new NE.Reactor(40);
         this.connect();
@@ -70,35 +70,67 @@ Kernel.prototype = {
         if(this.panicEnabled === true){
             return;
         }
-        
-        setTimeout(function(){
-            self.send("actionSync", self.reactor.ticks+3);
-            self.sendAction();
-        },2000);
+        self.send("actionSync", self.reactor.ticks);
     },
     
     actionSync: function(ticks){
-        if(this.reactor.ticks > ticks){
-            console.error("panic");
-            this.send("panic", this.reactor.ticks-ticks);
-            this.panicEnabled = true;
-            this.reactor.stop();
-        } else {
-            console.log("Action Recieved on tick: "+this.reactor.ticks+" scedueled for: "+ticks + "Diff: "+(ticks - this.reactor.ticks));
+        this.syncedTicks[ticks] = true;
+        if(this.paused){
+            this.enforceSync();
         }
     },
     
     panic: function(diff){
         console.error("Panic on remote with diff: "+diff);
-        this.reactor.stop();
+        this.panicFlag = true;
     },
     
     startReactor: function(delta){
         var self = this;
-        this.sendAction();
+        //this.sendAction();
         setTimeout(function(){
-            self.reactor.run();
+            self.reactorTick();
         }, delta);
+    },
+    
+    reactorTick: function () {
+        
+        var self = this;
+        
+        if(this.panicFlag){
+            return;
+        }
+        
+        setTimeout(function () {
+            self.reactorTick();
+        }, this.reactor.delay);
+        
+        if(this.reactor.ticks%4 === 0 && this.reactor.ticks > 0){
+            this.enforceSync();
+        } else {
+            this.reactor.tickOnce();
+        }
+        
+        if(this.reactor.ticks > 0){
+            this.sendAction();
+        }
+    },
+    
+    enforceSync: function(){
+        this.paused = false;
+        for(var i = this.reactor.ticks-4;i<this.reactor.ticks-1;i++){
+            if(!this.syncedTicks[i]){
+                this.paused = true;
+            }
+        }
+        if(!this.paused){
+            this.reactor.tickOnce();
+        } else {
+            var self = this;
+            setTimeout(function(){
+                self.panic();
+            },3000);
+        }
     },
     
     send: function(){
