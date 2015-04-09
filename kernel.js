@@ -6,6 +6,8 @@ Kernel.prototype = {
     
     isMaster: false,
     syncedTicks: {},
+    syncWindow: 2,
+
     initialize: function () {
         this.reactor = new NE.Reactor(40);
         this.connect();
@@ -81,7 +83,7 @@ Kernel.prototype = {
     },
     
     panic: function(diff){
-        console.error("Panic on remote with diff: "+diff);
+        console.error("Panic on remote");
         this.panicFlag = true;
     },
     
@@ -94,18 +96,16 @@ Kernel.prototype = {
     },
     
     reactorTick: function () {
-        
-        var self = this;
-        
-        if(this.panicFlag){
+        if(this.paused){
             return;
         }
+        var self = this;
         
         setTimeout(function () {
             self.reactorTick();
         }, this.reactor.delay);
         
-        if(this.reactor.ticks%4 === 0 && this.reactor.ticks > 0){
+        if(this.reactor.ticks >= this.syncWindow){
             this.enforceSync();
         } else {
             this.reactor.tickOnce();
@@ -119,14 +119,13 @@ Kernel.prototype = {
     enforceSync: function(){
         this.paused = false;
         clearTimeout(this.panicTimer);
-        for(var i = this.reactor.ticks-4;i<this.reactor.ticks-1;i++){
-            if(!this.syncedTicks[i]){
-                this.paused = true;
-            }
+        if(!this.syncedTicks[this.reactor.ticks - this.syncWindow]){
+            this.paused = true;
         }
         if(!this.paused){
             this.reactor.tickOnce();
         } else {
+            console.log("PAUSED=============================PAUSED======================PAUSED");
             var self = this;
             this.panicTimer = setTimeout(function(){
                 self.panic();
