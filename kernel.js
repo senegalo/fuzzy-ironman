@@ -6,11 +6,13 @@ Kernel.prototype = {
     
     isMaster: false,
     syncedTicks: {},
-    syncWindow: 2,
+    syncWindow: 4,
+    recievedDelay: 0,
 
     initialize: function () {
         this.reactor = new NE.Reactor(40);
         this.connect();
+        this.initAnimation();
         this.registerGlobalEvents();
     },
     
@@ -30,12 +32,15 @@ Kernel.prototype = {
     },
     
     parseData: function (data) {
-        console.log("Command Recieved: " + data);
-        var action = JSON.parse(data);
-        if (this[action.command]) {
-            console.log("==" + action.command);
-            this[action.command].apply(this, action.params);
-        }
+        var self = this;
+        setTimeout(function(){
+            console.log("Command Recieved: " + data);
+            var action = JSON.parse(data);
+            if (self[action.command]) {
+                console.log("==" + action.command);
+                self[action.command].apply(self, action.params);
+            }
+        }, this.recievedDelay);
     },
     
     connectTo: function(id){
@@ -63,6 +68,7 @@ Kernel.prototype = {
     
     pong: function(){
         this.delta = (new Date()) - this.pingStart;
+        console.log("DELTA =======", this.delta);
         this.send("startReactor", 1000 - this.delta/2);
         this.startReactor(1000);
     },
@@ -77,8 +83,8 @@ Kernel.prototype = {
     
     actionSync: function(ticks){
         this.syncedTicks[ticks] = true;
-        if(this.paused){
-            this.enforceSync();
+        if(!this.reactor.running){
+            this.sync();
         }
     },
     
@@ -91,56 +97,71 @@ Kernel.prototype = {
         var self = this;
         //this.sendAction();
         setTimeout(function(){
-            self.reactorTick();
+            self.reactor.fireEvery(1, self, 'reactorTick');
+            self.reactor.run();
         }, delta);
     },
     
     reactorTick: function () {
-        if(this.paused){
-            return;
-        }
         var self = this;
         
-        setTimeout(function () {
-            self.reactorTick();
-        }, this.reactor.delay);
-        
-        if(this.reactor.ticks >= this.syncWindow){
-            this.enforceSync();
-        } else {
-            this.reactor.tickOnce();
-        }
-        
-        if(this.reactor.ticks > 0){
+        // if(this.reactor.ticks > 0){
             this.sendAction();
+        // }
+        if(this.reactor.ticks >= this.syncWindow){
+            this.sync();
         }
+        this.update();
+        
     },
     
-    enforceSync: function(){
-        this.paused = false;
+    sync: function(){
         clearTimeout(this.panicTimer);
         if(!this.syncedTicks[this.reactor.ticks - this.syncWindow]){
-            this.paused = true;
-        }
-        if(!this.paused){
-            this.reactor.tickOnce();
-        } else {
-            console.log("PAUSED=============================PAUSED======================PAUSED");
+            this.reactor.pause();
+            this.timePaused = new Date();
+            console.log("PAUSED=======================PAUSED======================PAUSED");
             var self = this;
             this.panicTimer = setTimeout(function(){
                 self.panic();
             },3000);
+        } else if(!this.reactor.running){
+            this.reactor.resume();
+            console.log("RESUME --- PAUSED Time:",(new Date())- this.timePaused);
         }
     },
     
     send: function(){
-        console.log("Sending Command: "+arguments[0]);
+        console.log("Sending Command: " + arguments[0]);
         this.connection.send(JSON.stringify({
             command: arguments[0],
             params: Array.prototype.slice.call(arguments).slice(1)
         }));
     },
+
+    initAnimation: function(){
+        var image = new Image();
+        image.src = "algeria-body-a.png";
+        this.canvas = $$('.canvas')[0];
+        this.ctx = this.canvas.getContext('2d');
+        var self = this;
+        this.x = 0;
+        this.y = 0;
+        this.frameY = 0;
+        this.noOfFrames = 12;
+        this.image = image;
+        image.onload = function(){
+            self.ctx.drawImage(image, 0,0);
+            self.frameh = image.height/self.noOfFrames;
+        }
+    },
     
+    update: function(){
+        this.frameY  =  (this.frameY + 1)% this.noOfFrames;
+        this.ctx.clearRect(0,0,1000,1000);
+        this.ctx.drawImage(this.image, 0, -this.frameY* this.frameh);
+    },
+
     registerGlobalEvents: function(){
         var self = this;
         (function($){
